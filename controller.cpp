@@ -20,17 +20,11 @@
 #include "physical.hpp"
 #include "sysfs.hpp"
 
-#include <boost/algorithm/string.hpp>
-#include <boost/container/flat_map.hpp>
 #include <sdeventplus/event.hpp>
 
 #include <algorithm>
 #include <iostream>
 #include <string>
-
-static constexpr auto busName = "xyz.openbmc_project.LED.Controller";
-static constexpr auto objectPath = "/xyz/openbmc_project/led/physical";
-static constexpr auto devPath = "/sys/class/leds/";
 
 boost::container::flat_map<std::string,
                            std::unique_ptr<phosphor::led::Physical>>
@@ -89,62 +83,116 @@ namespace phosphor
 namespace led
 {
 
-void Controller::ledEventHandle(std::vector<std::string>& names)
+void Controller::getObjects(sdbusplus::bus_t& bus)
 {
-    std::vector<std::string> ledName = {
-        "group1:blue:power1",    "group2:blue:power2",    "group3:blue:power3",
-        "group4:blue:power4",    "group1:yellow:system1", "group2",
-        "group3:yellow:system3", "group4:yellow:system4"};
+    std::cerr << " In get objects \n";
 
-    names = ledName;
+    auto eventHandler = [&](sdbusplus::message_t& message) {
+        if (message.is_method_error())
+        {
+            std::cerr << "callback method error\n";
+            return;
+        }
+        getManagedObjects(message);
+    };
+
+    auto match = std::make_unique<sdbusplus::bus::match_t>(
+        static_cast<sdbusplus::bus_t&>(bus),
+        sdbusplus::bus::match::rules::interfacesAdded() +
+            sdbusplus::bus::match::rules::sender(entityService),
+        eventHandler);
+    matches.emplace_back(std::move(match));
 }
 
-// void Controller::ledEventHandle()
-void Controller::createLEDPath(sdbusplus::bus::bus& bus)
+void Controller::getManagedObjects(sdbusplus::message_t& message)
+{
+    sdbusplus::message::object_path path;
+    LedData interfaces;
+    message.read(path, interfaces);
+
+    if (!interfaces.contains(interface))
+    {
+        return;
+    }
+
+    const auto& entry = interfaces.at(interface);
+
+    std::cerr << " ******************\n";
+
+    auto findName = entry.find("Name");
+    std::string function = std::get<std::string>(findName->second);
+
+    std::cerr << " Function  : " << function << "\n";
+
+    std::string deviceName = function;
+    auto findClass = entry.find("Class");
+    if (findClass != entry.end())
+    {
+        deviceName = std::get<std::string>(findClass->second);
+
+        std::cerr << " Class  : " << deviceName << "\n";
+    }
+
+    std::string color;
+    auto findColor = entry.find("Name1");
+    if (findColor != entry.end())
+    {
+        color = std::get<std::string>(findColor->second);
+
+        std::cerr << " Color  : " << color << "\n";
+    }
+
+    std::string name = deviceName + ":" + color + ":" + function;
+    std::cerr << " Name  : " << name << "\n";
+    createLEDPath(name);
+}
+
+void Controller::createLEDPath(std::string name)
 {
     std::cerr << " In led event handle \n";
+    std::cerr << " LED Name  : " << name << "\n";
 
     namespace fs = std::filesystem;
 
-    std::vector<std::string> ledNames;
-    ledEventHandle(ledNames);
+    // LED names may have a hyphen and that would be an issue for
+    // dbus paths and hence need to convert them to underscores.
+    std::replace(name.begin(), name.end(), '/', '-');
+    auto path = devPath + name;
 
-    for (auto name : ledNames)
+    std::cerr << " Path : " << path << "\n";
+
+    // Convert to lowercase just in case some are not and that
+    // we follow lowercase all over
+    std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+
+    // LED names may have a hyphen and that would be an issue for
+    // dbus paths and hence need to convert them to underscores.
+    std::replace(name.begin(), name.end(), '-', '_');
+
+    // Convert LED name in sysfs into DBus name
+    LedDescr ledDescr;
+    getLedDescr(name, ledDescr);
+    name = getDbusName(ledDescr);
+
+    // Unique path name representing a single LED.
+    auto objPath =
+        std::string(objectPath) + '/' + ledDescr.devicename + '/' + name;
+
+    // Create the Physical LED objects for directing actions.
+    // Need to save this else sdbusplus destructor will wipe this off.
+    if (!std::filesystem::exists(fs::path(path)))
     {
-        // LED names may have a hyphen and that would be an issue for
-        // dbus paths and hence need to convert them to underscores.
-        std::replace(name.begin(), name.end(), '/', '-');
-        auto path = devPath + name;
-
-        // Convert to lowercase just in case some are not and that
-        // we follow lowercase all over
-        std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-
-        // LED names may have a hyphen and that would be an issue for
-        // dbus paths and hence need to convert them to underscores.
-        std::replace(name.begin(), name.end(), '-', '_');
-
-        // Convert LED name in sysfs into DBus name
-        LedDescr ledDescr;
-        getLedDescr(name, ledDescr);
-        name = getDbusName(ledDescr);
-
-        // Unique path name representing a single LED.
-        auto objPath =
-            std::string(objectPath) + '/' + ledDescr.devicename + '/' + name;
-
-        // Create the Physical LED objects for directing actions.
-        // Need to save this else sdbusplus destructor will wipe this off.
-        phosphor::led::SysfsLed sled{fs::path(path)};
-
-        std::cerr << objPath << " \n";
-        std::cerr << ledDescr.color << "\n";
-
-        auto& obj = leds[objPath];
-        obj = std::make_unique<phosphor::led::Physical>(bus, objPath, sled,
-                                                        ledDescr.color);
+        std::cerr << " *** No such directory ***\n";
+        return;
     }
-    std::cerr << "End \n";
+    phosphor::led::SysfsLed sled{fs::path(path)};
+
+    std::cerr << objPath << " \n";
+    std::cerr << ledDescr.color << "\n";
+
+    auto& obj = leds[objPath];
+    obj = std::make_unique<phosphor::led::Physical>(bus, objPath, sled,
+                                                    ledDescr.color);
 }
 } // namespace led
 } // namespace phosphor
