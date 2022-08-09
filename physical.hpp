@@ -7,6 +7,7 @@
 #include <xyz/openbmc_project/Led/Physical/server.hpp>
 
 #include <fstream>
+#include <iostream>
 #include <string>
 
 namespace phosphor
@@ -46,11 +47,14 @@ class Physical : public PhysicalIfaces
      * @param[in] color     - led color name
      */
     Physical(sdbusplus::bus::bus& bus, const std::string& objPath,
-             SysfsLed& led, const std::string& color = "") :
+             std::shared_ptr<SysfsLed>& led, const std::string& color = "") :
         PhysicalIfaces(bus, objPath.c_str(),
                        PhysicalIfaces::action::defer_emit),
         led(led)
     {
+        std::cerr << " In physical constructor \n";
+        std::cerr << " obj path : " << objPath << "\n";
+
         // Suppose this is getting launched as part of BMC reboot, then we
         // need to save what the micro-controller currently has.
         setInitialState();
@@ -78,7 +82,7 @@ class Physical : public PhysicalIfaces
   private:
     /** @brief Associated LED implementation
      */
-    SysfsLed& led;
+    std::shared_ptr<SysfsLed>& led;
 
     /** @brief The value that will assert the LED */
     unsigned long assert;

@@ -20,6 +20,7 @@
 #include "physical.hpp"
 #include "sysfs.hpp"
 
+#include <boost/algorithm/string.hpp>
 #include <sdeventplus/event.hpp>
 
 #include <algorithm>
@@ -29,6 +30,10 @@
 boost::container::flat_map<std::string,
                            std::unique_ptr<phosphor::led::Physical>>
     leds;
+
+boost::container::flat_map<std::string,
+                           std::shared_ptr<phosphor::led::SysfsLed>>
+    sysfsLed;
 
 struct LedDescr
 {
@@ -122,15 +127,11 @@ void Controller::getManagedObjects(sdbusplus::message_t& message)
     auto findName = entry.find("Name");
     std::string function = std::get<std::string>(findName->second);
 
-    std::cerr << " Function  : " << function << "\n";
-
     std::string deviceName = function;
     auto findClass = entry.find("Class");
     if (findClass != entry.end())
     {
         deviceName = std::get<std::string>(findClass->second);
-
-        std::cerr << " Class  : " << deviceName << "\n";
     }
 
     std::string color;
@@ -138,8 +139,6 @@ void Controller::getManagedObjects(sdbusplus::message_t& message)
     if (findColor != entry.end())
     {
         color = std::get<std::string>(findColor->second);
-
-        std::cerr << " Color  : " << color << "\n";
     }
 
     std::string name = deviceName + ":" + color + ":" + function;
@@ -185,14 +184,15 @@ void Controller::createLEDPath(std::string name)
         std::cerr << " *** No such directory ***\n";
         return;
     }
-    phosphor::led::SysfsLed sled{fs::path(path)};
+
+    auto sysfs = std::make_shared<phosphor::led::SysfsLed>(fs::path(path));
+    sysfsLed[objPath] = sysfs;
 
     std::cerr << objPath << " \n";
     std::cerr << ledDescr.color << "\n";
 
-    auto& obj = leds[objPath];
-    obj = std::make_unique<phosphor::led::Physical>(bus, objPath, sled,
-                                                    ledDescr.color);
+    leds[objPath] = std::make_unique<phosphor::led::Physical>(
+        bus, objPath, sysfs, ledDescr.color);
 }
 } // namespace led
 } // namespace phosphor
