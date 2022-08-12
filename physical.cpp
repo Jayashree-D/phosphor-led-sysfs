@@ -28,13 +28,13 @@ namespace led
 /** @brief Populates key parameters */
 void Physical::setInitialState()
 {
-    assert = led->getMaxBrightness();
-    auto trigger = led->getTrigger();
+    assert = getMaxBrightness();
+    auto trigger = getTrigger();
     if (trigger == "timer")
     {
         // LED is blinking. Get the on and off delays and derive percent duty
-        auto delayOn = led->getDelayOn();
-        uint16_t periodMs = delayOn + led->getDelayOff();
+        auto delayOn = getDelayOn();
+        uint16_t periodMs = delayOn + getDelayOff();
         auto percentScale = periodMs / 100;
         this->dutyOn(delayOn / percentScale);
         this->period(periodMs);
@@ -42,16 +42,16 @@ void Physical::setInitialState()
     else
     {
         // Cache current LED state
-        auto brightness = led->getBrightness();
+        auto brightness = getBrightness();
         if (brightness && assert)
         {
-            std::cerr << " ON Led \n";
+    //        std::cerr << " ON Led \n";
             sdbusplus::xyz::openbmc_project::Led::server::Physical::state(
                 Action::On);
         }
         else
         {
-            std::cerr << " Off Led \n";
+      //      std::cerr << " Off Led \n";
             sdbusplus::xyz::openbmc_project::Led::server::Physical::state(
                 Action::Off);
         }
@@ -61,11 +61,14 @@ void Physical::setInitialState()
 
 auto Physical::state() const -> Action
 {
+	std::cerr << " Get property \n";
     return sdbusplus::xyz::openbmc_project::Led::server::Physical::state();
 }
 
 auto Physical::state(Action value) -> Action
 {
+	std::cerr << "Set property \n";
+	std::cerr << "obj path : " << objPath << "\n";
     auto current =
         sdbusplus::xyz::openbmc_project::Led::server::Physical::state();
 
@@ -74,13 +77,13 @@ auto Physical::state(Action value) -> Action
 
     driveLED(current, requested);
 
-    std::cerr << "Val : " << static_cast<int>(value) << "\n";
+//    std::cerr << "Val : " << static_cast<int>(value) << "\n";
     return value;
 }
 
 void Physical::driveLED(Action current, Action request)
 {
-    std::cerr << " --------- drive led ------\n";
+  //  std::cerr << " --------- drive led ------\n";
 
     if (current == request)
     {
@@ -98,30 +101,30 @@ void Physical::driveLED(Action current, Action request)
 
 void Physical::stableStateOperation(Action action)
 {
-    std::cerr << " stable opertaion\n";
+    //std::cerr << " stable opertaion\n";
 
     auto value = (action == Action::On) ? assert : DEASSERT;
 
-    std::cerr << "After value \n";
-    std::cerr << " Value  : " << value << "\n";
+    //std::cerr << "After value \n";
+    //std::cerr << " Value  : " << value << "\n";
 
-    led->setTrigger("none");
+    setTrigger("none");
 
-    std::cerr << " After set trigger \n";
+    //std::cerr << " After set trigger \n";
 
-    led->setBrightness(value);
+    setBrightness(value);
 
-    std::cerr << " After set brightness \n";
+    //std::cerr << " After set brightness \n";
 
     return;
 }
 
 void Physical::blinkOperation()
 {
-    std::cerr << " In blink operation \n";
+    //std::cerr << " In blink operation \n";
     auto dutyOn = this->dutyOn();
 
-    std::cerr << " Before set trigger \n";
+    //std::cerr << " Before set trigger \n";
 
     /*
       The configuration of the trigger type must precede the configuration of
@@ -133,22 +136,22 @@ void Physical::blinkOperation()
       Refer:
       https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Documentation/leds/leds-class.txt?h=v5.2#n26
     */
-    led->setTrigger("timer");
+    setTrigger("timer");
 
-    std::cerr << " After set trigger \n";
+    //std::cerr << " After set trigger \n";
 
     // Convert percent duty to milliseconds for sysfs interface
     auto factor = this->period() / 100.0;
 
-    std::cerr << " Before set delayon \n";
+    //std::cerr << " Before set delayon \n";
 
-    led->setDelayOn(dutyOn * factor);
+    setDelayOn(dutyOn * factor);
 
-    std::cerr << " After set delayon \n";
+    //std::cerr << " After set delayon \n";
 
-    led->setDelayOff((100 - dutyOn) * factor);
+    setDelayOff((100 - dutyOn) * factor);
 
-    std::cerr << " After set delayoff \n";
+    //std::cerr << " After set delayoff \n";
 
     return;
 }

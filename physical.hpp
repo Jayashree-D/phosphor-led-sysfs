@@ -26,7 +26,7 @@ using PhysicalIfaces = sdbusplus::server::object_t<
 /** @class Physical
  *  @brief Responsible for applying actions on a particular physical LED
  */
-class Physical : public PhysicalIfaces
+class Physical : public PhysicalIfaces, SysfsLed
 {
   public:
     Physical() = delete;
@@ -47,25 +47,25 @@ class Physical : public PhysicalIfaces
      * @param[in] color     - led color name
      */
     Physical(sdbusplus::bus_t& bus, const std::string& objPath,
-             std::shared_ptr<SysfsLed>& led, const std::string& color = "") :
+              std::filesystem::path&& rootPath) :
         PhysicalIfaces(bus, objPath.c_str(),
                        PhysicalIfaces::action::defer_emit),
-        led(led)
+        SysfsLed(std::filesystem::path(rootPath)), objPath(objPath)
     {
-        std::cerr << " In physical constructor \n";
-        std::cerr << " obj path : " << objPath << "\n";
+//        std::cerr << " In physical constructor \n";
+//        std::cerr << " obj path : " << objPath << "\n";
 
         // Suppose this is getting launched as part of BMC reboot, then we
         // need to save what the micro-controller currently has.
-        setInitialState();
+//        setInitialState();
 
         // Read led color from enviroment and set it in DBus.
-        setLedColor(color);
+ //       setLedColor(color);
 
         // We are now ready.
         emit_object_added();
     }
-
+    std::string objPath;
     /** @brief Overloaded State Property Setter function
      *
      *  @param[in] value   -  One of OFF / ON / BLINK
@@ -79,10 +79,10 @@ class Physical : public PhysicalIfaces
      */
     Action state() const override;
 
-  private:
+//  private:
     /** @brief Associated LED implementation
      */
-    std::shared_ptr<SysfsLed>& led;
+    //std::unique_ptr<SysfsLed>& led;
 
     /** @brief The value that will assert the LED */
     unsigned long assert;

@@ -52,7 +52,7 @@ class Controller
 
     void getManagedObjects(sdbusplus::message_t& message);
 
-    void createLEDPath(std::string name);
+    void createLEDPath(std::string& ledName);
 };
 
 } // namespace led

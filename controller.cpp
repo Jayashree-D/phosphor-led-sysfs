@@ -32,7 +32,7 @@ boost::container::flat_map<std::string,
     leds;
 
 boost::container::flat_map<std::string,
-                           std::shared_ptr<phosphor::led::SysfsLed>>
+                           std::unique_ptr<phosphor::led::SysfsLed>>
     sysfsLed;
 
 struct LedDescr
@@ -90,7 +90,7 @@ namespace led
 
 void Controller::getObjects(sdbusplus::bus_t& bus)
 {
-    std::cerr << " In get objects \n";
+//    std::cerr << " In get objects \n";
 
     auto eventHandler = [&](sdbusplus::message_t& message) {
         if (message.is_method_error())
@@ -122,7 +122,7 @@ void Controller::getManagedObjects(sdbusplus::message_t& message)
 
     const auto& entry = interfaces.at(interface);
 
-    std::cerr << " ******************\n";
+//    std::cerr << " ******************\n";
 
     auto findName = entry.find("Name");
     std::string function = std::get<std::string>(findName->second);
@@ -141,24 +141,20 @@ void Controller::getManagedObjects(sdbusplus::message_t& message)
         color = std::get<std::string>(findColor->second);
     }
 
-    std::string name = deviceName + ":" + color + ":" + function;
-    std::cerr << " Name  : " << name << "\n";
-    createLEDPath(name);
+    std::string names = deviceName + ":" + color + ":" + function;
+  //  std::cerr << " Name  : " << name << "\n";
+    createLEDPath(names);
 }
 
-void Controller::createLEDPath(std::string name)
+void Controller::createLEDPath(std::string& ledName)
 {
-    std::cerr << " In led event handle \n";
-    std::cerr << " LED Name  : " << name << "\n";
-
+    std::string name = ledName;
     namespace fs = std::filesystem;
 
     // LED names may have a hyphen and that would be an issue for
     // dbus paths and hence need to convert them to underscores.
     std::replace(name.begin(), name.end(), '/', '-');
-    auto path = devPath + name;
-
-    std::cerr << " Path : " << path << "\n";
+    std::string path = devPath + name;
 
     // Convert to lowercase just in case some are not and that
     // we follow lowercase all over
@@ -174,7 +170,7 @@ void Controller::createLEDPath(std::string name)
     name = getDbusName(ledDescr);
 
     // Unique path name representing a single LED.
-    auto objPath =
+    std::string objPath =
         std::string(objectPath) + '/' + ledDescr.devicename + '/' + name;
 
     // Create the Physical LED objects for directing actions.
@@ -185,14 +181,19 @@ void Controller::createLEDPath(std::string name)
         return;
     }
 
-    auto sysfs = std::make_shared<phosphor::led::SysfsLed>(fs::path(path));
-    sysfsLed[objPath] = sysfs;
+//    auto& sysfs = sysfsLed[objPath];
+//    sysfs = std::make_unique<phosphor::led::SysfsLed>(fs::path(path));
+    //sysfsLed[objPath] = sysfs;
 
-    std::cerr << objPath << " \n";
-    std::cerr << ledDescr.color << "\n";
+   // std::cerr << objPath << " \n";
+   // std::cerr << ledDescr.color << "\n";
 
-    leds[objPath] = std::make_unique<phosphor::led::Physical>(
-        bus, objPath, sysfs, ledDescr.color);
+    auto& physical = leds[objPath];
+    physical = std::make_unique<phosphor::led::Physical>(
+        bus, objPath, fs::path(path));
+
+    physical->setInitialState();
+    physical->setLedColor(ledDescr.color);
 }
 } // namespace led
 } // namespace phosphor
